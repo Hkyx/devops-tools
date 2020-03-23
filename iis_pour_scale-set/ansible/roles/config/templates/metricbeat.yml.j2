@@ -1,0 +1,29 @@
+###################### Metricbeat Configuration Example #######################
+
+#==========================  Modules configuration ============================
+
+metricbeat.config.modules:
+
+  path: ${path.config}/modules.d/*.yml
+
+  # Set to true to enable config reloading
+  reload.enabled: true
+
+  # Period on which files under path should be checked for changes
+  reload.period: 5s
+
+#================================ General =====================================
+
+tags: ["metricbeat"]
+
+#================================ Outputs =====================================
+
+#----------------------------- Logstash output --------------------------------
+output.logstash:
+  hosts: ["{{ logstashserveraddress }}:{{ logstashserverport }}"]
+
+#================================ Processors =====================================
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~

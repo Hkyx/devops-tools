@@ -1,0 +1,11 @@
+$LogPath = "{{ rootlogdirprefix }}"
+$maxDaystoKeep = "-{{ DeleteLogsOlderThan }}"
+
+$itemsToDelete = get-childitem -path  $LogPath -Recurse -Include *.log | where-object {$_.lastwritetime -lt ((get-date).AddDays($maxDaystoKeep))}
+
+if ($itemsToDelete.Count -gt 0){
+  ForEach ($item in $itemsToDelete)
+   {
+    Get-item $item | Remove-Item
+   }
+}

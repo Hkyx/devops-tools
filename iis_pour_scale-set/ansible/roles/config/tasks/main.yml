@@ -1,0 +1,5 @@
+- name: include tasks
+  include:  prepareiis.yml
+
+- name: include config logging/monitoring
+  include: logging.yml

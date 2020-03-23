@@ -1,0 +1,4 @@
+- name: Create the direcotry of scheduled scripts
+  win_file:
+    path: "{{ scheduledscripstpath }}"
+    state: directory

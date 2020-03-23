@@ -1,0 +1,42 @@
+- name: Configure the LogExtFileFlags for all the server.
+  win_shell: |
+    Set-WebConfigurationProperty -Filter System.Applicationhost/Sites/SiteDefaults/logfile -Name LogExtFileFlags -Value “Date,Time,TimeTaken,SiteName,Method,HttpStatus,ProtocolVersion,UriQuery,UriStem,HttpSubStatus,ServerPort,ComputerName,Host,ServerIP,ClientIP,Referer,UserAgent,UserName,Win32Status,BytesRecv,BytesSent,Cookie”
+
+
+- name: schedule the log rotate script for every morining at 1:30am
+  win_scheduled_task:
+    name: MorningLogRotation
+    description: open command prompt
+    actions:
+    - path: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      arguments: "{{ logRotateScriptPath }}"
+    triggers:
+    - type: daily
+      start_boundary: '2017-10-09T01:30:00'
+    username: SYSTEM
+    state: present
+    enabled: yes
+
+- name: install packages with specific versions"
+  win_chocolatey:
+    name: "{{ item.name }}"
+    version: "{{ item.version }}"
+    force: yes
+  loop:
+    - { name: 'filebeat', version: '{{ filebeatversion }}' }
+    - { name: 'metricbeat', version: '{{ filebeatversion }}' }
+    - { name: 'dotnetcore-windowshosting', version: '2.2.5' }
+    - { name: 'dotnetcore-windowshosting', version: '3.1.0' }
+
+- name: upload templates for filebeat, metricbeat, LogRotation
+  win_template:
+    src: "{{ item.src }}.j2"
+    dest: "{{ item.dest }}"
+  loop:
+    - { src: "{{ filebeatConf }}", dest: "{{ filebeatConfPath }}" }
+    - { src: "{{ metricbeatConfSysModule  }}", dest: "{{ metricbeatConfSysModulePath }}" }
+    - { src: "{{ metricbeatConf }}", dest: "{{ metricbeatConfPath }}" }
+    - { src: "{{ logRotateScript }}", dest: "{{ logRotateScriptPath }}" }
+  notify:
+    - metricbeat_restart
+    - filebeat_restart

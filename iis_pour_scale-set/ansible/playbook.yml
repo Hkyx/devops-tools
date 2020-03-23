@@ -1,0 +1,15 @@
+---
+- name: iis webserver
+  hosts: all
+ gather_facts: false
+  roles:
+    - global
+#    - install_cumulus
+    #the tags are:  fromscratch  iisinstallationonly  windowsupdate
+
+    #with the command "Set-ItemPropertyÈwe will modify the registrey key
+    #HKLM:\SOFTWARE\Policies\Microsoft\Windows\System         which is effectively the local group policy
+    #->Computer Configuration->Administrative Templates->System-> User Profiles->'Do not forcefully unload the user registry at user logoff'
+    #what will Prevent Windows from forcibly unloading registry hives during user logoff events
+    #because if we do not, running asynchrounouly will fail with the error
+    #"Illegal operation attempted on a registry key that has been marked for deletion"

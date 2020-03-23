@@ -1,0 +1,158 @@
+- name: Do not forcefully unload the user registry at user logoff
+  win_shell:
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "DisableForceUnload" -Value 1
+
+- name: disable server manager on boot
+  win_shell: |
+    Get-ScheduledTask -TaskName ServerManager | Disable-ScheduledTask
+
+- name: disable firewall for Domain, Public and Private profiles
+  win_firewall:
+    state: disabled
+    profiles:
+    - Domain
+    - Private
+    - Public
+
+- name: remove win-defender feature
+  win_feature:
+    name: Windows-Defender
+    state: absent
+  register: win_featureB
+  notify:
+    - iis_reboot
+
+
+ - name: Install IIS (without Web-DAV-Publishing)
+   win_shell: |
+      Install-WindowsFeature -Name Web-Server,Web-WebServer,Web-Common-Http,Web-Default-Doc,Web-Dir-Browsing,Web-Http-Errors,Web-Static-Content,Web-Http-Redirect,Web-Health,Web-Http-Logging,Web-Custom-Logging,Web-Log-Libraries,Web-ODBC-Logging,Web-Request-Monitor,Web-Http-Tracing,Web-Performance,Web-Stat-Compression,Web-Dyn-Compression,Web-Security,Web-Filtering,Web-Basic-Auth,Web-CertProvider,Web-Client-Auth,Web-Digest-Auth,Web-Cert-Auth,Web-IP-Security,Web-Url-Auth,Web-Windows-Auth,Web-App-Dev,Web-Net-Ext,Web-Net-Ext45,Web-AppInit,Web-ASP,Web-Asp-Net,Web-Asp-Net45,Web-CGI,Web-ISAPI-Ext,Web-ISAPI-Filter,Web-Includes,Web-WebSockets  -IncludeAllSubFeature -IncludeManagementTools
+   register: win_feature
+
+- name: Install IIS (without Web-DAV-Publishing)
+  win_feature:
+    name: Web-Server,Web-WebServer,Web-Common-Http,Web-Default-Doc,Web-Dir-Browsing,Web-Http-Errors,Web-Static-Content,Web-Http-Redirect,Web-Health,Web-Http-Logging,Web-Custom-Logging,Web-Log-Libraries,Web-ODBC-Logging,Web-Request-Monitor,Web-Http-Tracing,Web-Performance,Web-Stat-Compression,Web-Dyn-Compression,Web-Security,Web-Filtering,Web-Basic-Auth,Web-CertProvider,Web-Client-Auth,Web-Digest-Auth,Web-Cert-Auth,Web-IP-Security,Web-Url-Auth,Web-Windows-Auth,Web-App-Dev,Web-Net-Ext,Web-Net-Ext45,Web-AppInit,Web-ASP,Web-Asp-Net,Web-Asp-Net45,Web-CGI,Web-ISAPI-Ext,Web-ISAPI-Filter,Web-Includes,Web-WebSockets,Telnet-Client,Web-Scripting-Tools
+    state: present
+    include_sub_features: no
+    include_management_tools: yes
+    restart: false
+  register: win_feature
+  poll: 20
+  async: 1800
+
+- name: Allow PUT and DELETE verbs
+  win_shell: |
+    Clear-WebConfiguration -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/security/requestFiltering/verbs'
+    Add-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/security/requestFiltering' -Value @{VERB="PUT";allowed="True"} -Name Verbs -AtIndex 0
+    Add-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter 'system.webServer/security/requestFiltering' -Value @{VERB="DELETE";allowed="True"} -Name Verbs -AtIndex 1
+
+- name: Install multiple packages
+  win_chocolatey:
+    name: '{{ item }}'
+    state: present
+    ignore_checksums: yes
+  with_items:
+    - googlechrome
+    - postman
+    - curl
+    - notepadplusplus
+    - 7Zip
+
+- name: add chocolatey to the PATH of all powershell profiles
+  win_shell: |
+      $alluserprofilepath=$profile.AllUsersAllHosts
+      Add-Content -Path $alluserprofilepath -Value '$Env:Path += ";C:\ProgramData\chocolatey\bin"'
+
+- name: Create the direcotry of scheduled scripts
+  win_file:
+    path: "{{ scheduledscripstpath }}"
+    state: directory
+
+
+- name: Install URLRewrite2.
+  win_webpicmd:
+    name: URLRewrite2
+
+- name: reboot if installing Web-Server feature requires it
+  win_reboot:
+  when: (win_feature.reboot_required) or (win_featureB.reboot_required)
+
+- name: disable IIS Default WebSite
+  win_shell: Set-WebConfigurationProperty -pspath 'MACHINE/WEBROOT/APPHOST' -filter "system.applicationHost/sites/site[@name='Default Web Site']" -name "serverAutoStart" -value "False"
+
+- name: restart iis
+  win_shell: iisreset
+
+#NOTE the path of the script should alwayd be c:\scheduledScripts because this is the script that will get scheduled by the downloadartifact script
+- name: Copy the unzip script into the image
+  win_copy:
+    src: UnzipArtifacts.ps1
+    dest: '{{ scheduledscripstpath }}\unzip.ps1'
+
+#IMP: on the ansible server edit the file /usr/lib/python2.7/site-packages/ansible/modules/windows/win_updates.ps1  and modify 30000 to be become 300000
+- name: Installing windows updates. this task will timeout after 45 min. if the update fail a log will be on the c drive
+   win_updates:
+     category_names:
+       - SecurityUpdates
+       - CriticalUpdates
+       - UpdateRollups
+     reboot: yes
+     log_path: c:\log_windows_update.txt
+     use_scheduled_task: yes
+   poll: 20
+   async: 2700
+   ignore_errors: true
+   register: winupdate
+   tags:
+     - windowsupdate
+
+- name: configure winrm to trust all hosts
+  win_shell:  Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force -Confirm:$False
+
+#    - name: if windows update succeeded delete the log file
+#      win_file:
+#        path: c:\log_windows_update.txt
+#        state: absent
+#      when: winupdate is not failed
+#      tags:
+#        - windowsupdate
+
+
+- name: install windows-update poweshell module
+  win_shell: |
+     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+     Install-Module PSWindowsUpdate -Confirm:$False -Force
+  tags:
+    - windowsupdate
+
+- name: call windowsupdate taskGroup
+  include: windowsupdate.yml
+  until: updatestate == 'break'
+  tags:
+    - windowsupdate
+
+- name: deleting the windows-update scheduled task
+  win_shell: Unregister-ScheduledTask -TaskName PSWindowsUpdate -Confirm:$false
+  tags:
+    - windowsupdate
+
+
+- name: disable windows account control
+  win_shell: Set-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System -NAME EnableLUA -Value 0
+
+  #stop and disable windows update service
+  #$ServicePID = (get-wmiobject win32_service | where { $_.name -eq 'wuauserv'}).processID
+  #If($ServicePID -gt 0) {Stop-Process $ServicePID -Force}
+  #get-service wuauserv | stop-service
+  #set-service wuauserv -StartupType Disabled
+  #Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name NoAutoUpdate -Value 1
+  #Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AUOptions -Value 2
+- name: disable winupdate
+  win_shell: |
+    set-service wuauserv -StartupType Disabled
+    Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name NoAutoUpdate -Value 1
+    Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU -Name AUOptions -Value 2
+
+- name: reboot
+  win_reboot:
+    reboot_timeout: 800
+    post_reboot_delay: 120

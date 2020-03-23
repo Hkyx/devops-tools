@@ -1,0 +1,27 @@
+devopsadminuser: ''
+devopsadminpassword: ''
+storageaccountname: ''
+storageaccountkey: ''
+rootlogdirprefix: 'c:\iislogs'
+rootappslogdirprefix: 'c:\appslogs'
+#Filebeat config
+filebeatConf: "filebeat.yml"
+filebeatConfPath: 'C:\ProgramData\chocolatey\lib\filebeat\tools\{{ filebeatConf }}'
+filebeatversion: '6.7.0'
+#logstash config
+logstashserveraddress: ''
+logstashserverport: ''
+#Metricbeat config
+## Module system
+metricbeatConfSysModule: "system.yml"
+metricbeatConfSysModulePath: 'C:\ProgramData\chocolatey\lib\metricbeat\tools\modules.d\{{ metricbeatConfSysModule }}'
+## Metricbeat config file
+metricbeatConf: 'metricbeat.yml'
+metricbeatConfPath: 'C:\ProgramData\chocolatey\lib\metricbeat\tools\{{ metricbeatConf }}'
+logstashmetricserverport: ''
+#Rotation Logs config
+scheduledscripstpath: 'c:\scheduledScripts'
+logRotateScript: 'iislogrotate.ps1'
+logRotateScriptPath: '{{ scheduledscripstpath }}\{{ logRotateScript }}'
+DeleteLogsOlderThan: ''
+updatestate: 'loop'

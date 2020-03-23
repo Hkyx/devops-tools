@@ -1,0 +1,61 @@
+---
+    - name: install windows updates using scheduled task
+      win_shell: |
+         $Script = {import-module PSWindowsUpdate; Get-WindowsUpdate -AcceptAll -Install  -IgnoreReboot -Verbose  | Out-File C:\PSWindowsUpdate.log}
+
+         $isbootneeded = Get-WURebootStatus -silent
+         if ("$isbootneeded" -eq "True")
+         {
+               echo "reboot"
+               exit 0
+         }
+
+         Invoke-WUjob -ComputerName localhost -Script $Script -Confirm:$false -RunNow
+
+         $count=0
+         $taskname='PSWindowsUpdate'
+         while ((($task =  Get-ScheduledTask $taskname | Get-ScheduledTaskInfo).LastTaskResult -eq '267011') -or (($task =  Get-ScheduledTask $taskname | Get-ScheduledTaskInfo).LastTaskResult -eq '267009'))
+           {
+                  $count++
+                  Start-Sleep -Seconds 90
+           }
+
+         $isbootneeded = Get-WURebootStatus -silent
+         if ("$isbootneeded" -eq "True")
+         {
+               echo "reboot"
+               exit 0
+         }
+
+         if (($task =  Get-ScheduledTask $taskname | Get-ScheduledTaskInfo).LastTaskResult -ne '0')
+         {
+                      echo "update failed" | Out-File C:\PSWindowsUpdate.log
+                      exit 1
+         }
+         else
+         {
+               echo "finish with success"
+               remove-item -Confirm:$false -Force -Path C:\PSWindowsUpdate.log -ErrorAction SilentlyContinue
+               exit 0
+         }
+      register: reboot
+      poll: 120
+      async: 10000
+      tags:
+        - windowsupdate          
+
+
+    - name: reboot
+      win_reboot:
+        reboot_timeout: 800
+        post_reboot_delay: 120
+      when: reboot.stdout == "reboot"
+      tags:
+        - windowsupdate          
+   
+    - name: set fact
+      set_fact:
+         updatestate: "{{ 'loop' if reboot.stdout == 'reboot' else 'break' }}"
+      tags:
+        - windowsupdate             
+        

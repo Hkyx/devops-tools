@@ -1,0 +1,18 @@
+---
+- name: reboot | Rebooting Server
+  win_reboot:
+    reboot_timeout: 3600
+    shutdown_timeout: 3600
+  when: iis_reboot
+
+- name: Restart metricbeat
+  win_service:
+    name: metricbeat
+    state: restarted
+  when: metricbeat_restart
+
+- name: Restart filebeat
+  win_service:
+    name: filebeat
+    state: restarted
+  when:  filebeat_restart
